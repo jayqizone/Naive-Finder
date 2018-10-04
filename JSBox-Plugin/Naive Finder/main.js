@@ -249,7 +249,7 @@ function goto(path, name, isDirectory) {
                         break;
                     case 'htm':
                     case 'html':
-                        $quicklook.open({ json: fm.$contentsAtPath(path).rawValue().string });
+                        $quicklook.open({ html: fm.$contentsAtPath(path).rawValue().string });
                         break;
                     case 'caf':
                         $audio.play({ url: 'file://' + path });
