@@ -113,6 +113,7 @@ $ui.render({
                 },
                 data: [
                     { title: { text: '/' }, path: '/' },
+                    { title: { text: '/Library/Ringtones' }, path: '/Library/Ringtones' },
                     { title: { text: '/System/Library' }, path: '/System/Library' },
                     { title: { text: 'Bundle Path' }, subtitle: { text: BUNDLE_PATH }, path: BUNDLE_PATH },
                     { title: { text: 'App Home' }, subtitle: { text: APP_HOME }, path: APP_HOME },
@@ -252,6 +253,7 @@ function goto(path, name, isDirectory) {
                         $quicklook.open({ html: fm.$contentsAtPath(path).rawValue().string });
                         break;
                     case 'caf':
+                    case 'm4r':
                         $audio.play({ url: 'file://' + path });
                         break;
                     default:
