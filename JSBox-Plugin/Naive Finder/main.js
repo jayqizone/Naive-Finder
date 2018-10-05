@@ -283,7 +283,7 @@ function goto(path, name, isDirectory) {
 
                     dirCount++;
                 } else {
-                    iconImage = $objc('UIImage').$imageNamed('explorer-file').rawValue();
+                    iconImage = getIconBySuffix(el.split('.').pop());
 
                     if (attrs) {
                         info = $objc('NSByteCountFormatter').$stringFromByteCount_countStyle(attrs.rawValue().NSFileSize, 0).rawValue().replace('字节', 'B');
@@ -311,29 +311,21 @@ function goto(path, name, isDirectory) {
                 }
                 let suffix = name.split('.').pop().toLowerCase();
                 switch (suffix) {
-                    case 'png':
-                    case 'jpg':
-                    case 'jpeg':
-                        $quicklook.open({ image: fm.$contentsAtPath(path).rawValue().image });
-                        break;
-                    case 'md':
-                    case 'txt':
                     case 'strings':
-                    case 'js':
                         $quicklook.open({ text: fm.$contentsAtPath(path).rawValue().string });
                         break;
                     case 'json':
                         $quicklook.open({ json: fm.$contentsAtPath(path).rawValue().string });
                         break;
-                    case 'htm':
-                    case 'html':
-                        $quicklook.open({ html: fm.$contentsAtPath(path).rawValue().string });
-                        break;
                     case 'caf':
-                    case 'm4r':
+                        // case 'm4r':
                         $audio.play({ url: 'file://' + path });
                         break;
                     default:
+                        $quicklook.open({
+                            type: suffix,
+                            data: fm.$contentsAtPath(path).rawValue()
+                        })
                         break;
                 }
                 $('description').text = `W: ${writable}    E: ${executable}    D: ${deletable}`;
@@ -346,16 +338,78 @@ function goto(path, name, isDirectory) {
     }
 }
 
+function getIconBySuffix(suffix) {
+    let image;
+    switch (suffix) {
+        case 'bmp':
+        case 'png':
+        case 'jpg':
+        case 'jpeg':
+        case 'jp2':
+        case 'gif':
+        case 'icns':
+        case 'ico':
+        case 'raw':
+        case 'heic':
+        case 'tif':
+        case 'tiff':
+        case 'pic':
+        case 'pict':
+            image = $objc('UIImage').$imageNamed('explorer-image');
+            break;
+        case 'md':
+            image = $objc('UIImage').$imageNamed('explorer-markdown');
+            break;
+        case 'txt':
+        case 'strings':
+        case 'json':
+            image = $objc('UIImage').$imageNamed('explorer-text');
+            break;
+        case 'js':
+        case 'htm':
+        case 'html':
+            image = $objc('UIImage').$imageNamed('explorer-code');
+            break;
+        case 'midi':
+        case 'wav':
+        case 'mp3':
+        case 'caf':
+        case 'm4r':
+            image = $objc('UIImage').$imageNamed('explorer-audio');
+            break;
+        case 'avi':
+        case 'mp4':
+        case 'mov':
+        case 'mpeg':
+        case 'mpeg2':
+            image = $objc('UIImage').$imageNamed('explorer-video');
+            break;
+        case 'db':
+            image = $objc('UIImage').$imageNamed('explorer-database');
+            break;
+        case 'zip':
+            image = $objc('UIImage').$imageNamed('explorer-zip');
+            break;
+        default:
+            break;
+    }
+    return image ? image.rawValue() : $objc('UIImage').$imageNamed('explorer-file').rawValue();
+}
+
 async function share(path, name, isDirectory) {
     if (isDirectory) {
-        let dest = `${name}.zip`;
-        let result = await $archiver.zip({
-            directory: ROOT + path,
-            dest
-        });
+        let index = await $ui.menu(['Archive']);
+        if (index !== undefined) {
+            let dest = `${name}.zip`;
+            let result = await $archiver.zip({
+                directory: ROOT + path,
+                dest
+            });
 
-        if (result) {
-            $share.sheet([`${name}.zip`, $file.read(dest)]);
+            if (result) {
+                await $share.sheet([`${name}.zip`, $file.read(dest)]);
+                $file.delete(dest);
+            }
         }
     } else {
         $share.sheet([name, fm.$contentsAtPath(path).rawValue()]);
