@@ -11,6 +11,8 @@ const BUNDLE_PATH = mb.$bundlePath().rawValue();
 const APP_HOME = NSHomeDirectory().rawValue();
 const APP_GROUP = fm.$containerURLForSecurityApplicationGroupIdentifier('group.jsbox.share').$path().rawValue();
 
+const forwardImage = $objc('UIImage').$imageNamed('browser_forward').rawValue().resized($size(20, 20)).runtimeValue().$imageWithRenderingMode(2).rawValue();
+
 let currentList = [];
 
 $ui.render({
@@ -23,7 +25,7 @@ $ui.render({
             props: {
                 id: 'address',
                 placeholder: 'Input Path',
-                bgcolor: $color('clear')
+                radius: 0
             },
             layout(make, view) {
                 make.top.inset(0);
@@ -54,22 +56,62 @@ $ui.render({
             type: 'list',
             props: {
                 id: 'fileList',
-                separatorColor: $color('clear'),
+                separatorColor: $color('#DDDDDD'),
                 template: {
                     views: [
                         {
+                            type: 'image',
+                            props: {
+                                id: 'icon',
+                                bgcolor: $color('clear')
+                            },
+                            layout(make, view) {
+                                make.top.inset(12);
+                                make.left.inset(5);
+                                make.size.equalTo($size(20, 20));
+                            }
+                        },
+                        {
                             type: 'label',
                             props: {
-                                id: 'file',
+                                id: 'file'
                             },
-                            layout: $layout.fill
+                            layout(make, view) {
+                                make.top.bottom.inset(0);
+                                make.left.inset(40);
+                                make.right.inset(80);
+                            }
+                        },
+                        {
+                            type: 'image',
+                            props: {
+                                id: 'forward',
+                                tintColor: $color('#B7BEC6'),
+                                bgcolor: $color('clear')
+                            },
+                            layout(make, view) {
+                                make.top.inset(12);
+                                make.right.inset(20);
+                            }
+                        },
+                        {
+                            type: 'label',
+                            props: {
+                                id: 'info',
+                                align: $align.right,
+                                textColor: $color('#666666')
+                            },
+                            layout(make, view) {
+                                make.top.bottom.inset(0);
+                                make.right.equalTo(view.prev.left);
+                            }
                         }
                     ]
                 }
             },
             layout(make, view) {
                 make.top.equalTo(view.prev.bottom);
-                make.left.inset(20);
+                make.left.inset(15);
                 make.right.inset(0);
                 make.bottom.inset(40 + indicatorHeight);
             },
@@ -78,6 +120,7 @@ $ui.render({
                     goto(data.path, data.name, data.isDirectory);
                 },
                 didLongPress(sender, indexPath, data) {
+                    $device.taptic(2);
                     share(data.path, data.name, data.isDirectory);
                 }
             }
@@ -122,7 +165,7 @@ $ui.render({
             },
             layout(make, view) {
                 make.top.equalTo(view.prev);
-                make.left.inset(20);
+                make.left.inset(15);
                 make.right.inset(0);
                 make.bottom.inset(40 + indicatorHeight);
             },
@@ -148,37 +191,55 @@ $ui.render({
             }
         },
         {
-            type: 'image',
-            props: {
-                id: 'upButton',
-                image: $file.read('assets/up.png').image.runtimeValue().$imageWithRenderingMode(2).rawValue(),
-                bgcolor: $color('clear')
-            },
-            layout: function (make, view) {
+            type: 'view',
+            views: [
+                {
+                    type: 'view',
+                    props: {
+                        radius: 25,
+                        bgcolor: $color('white')
+                    },
+                    layout: $layout.fill
+                },
+                {
+                    type: 'image',
+                    props: {
+                        id: 'upButton',
+                        image: $file.read('assets/up.png').image.runtimeValue().$imageWithRenderingMode(2).rawValue(),
+                        bgcolor: $color('clear')
+                    },
+                    layout: $layout.fill,
+                    events: {
+                        tapped: function (sender) {
+                            sender.animator.makeScale(0.8).makeOpacity(0.4).easeOut.thenAfter(0.05).makeScale(1.25).makeOpacity(1).easeIn.animate(0.05);
+
+                            if ($('address').text === '/') {
+                                showSuggestions(true);
+                            } else {
+                                showSuggestions(false);
+
+                                let dirs = $('address').text.split('/');
+                                dirs.pop() === '' && dirs.pop();
+                                goto(dirs.join('/') + '/');
+                            }
+                        },
+                        longPressed({ sender, location }) {
+                            $device.taptic(2);
+                            showSuggestions(true);
+                        },
+                        touchesBegan: (sender, location) => {
+                        },
+                        touchesMoved: (sender, location) => {
+                        },
+                        touchesEnded: (sender, location) => {
+                        }
+                    }
+                }
+            ],
+            layout(make, view) {
                 make.size.equalTo($size(50, 50));
                 make.right.inset(25);
                 make.bottom.inset(40);
-            },
-            events: {
-                tapped: function (sender) {
-                    sender.animator.makeScale(0.8).makeOpacity(0.4).easeOut.thenAfter(0.05).makeScale(1.25).makeOpacity(1).easeIn.animate(0.05);
-
-                    if ($('address').text === '/') {
-                        showSuggestions(true);
-                    } else {
-                        showSuggestions(false);
-
-                        let dirs = $('address').text.split('/');
-                        dirs.pop() === '' && dirs.pop();
-                        goto(dirs.join('/') + '/');
-                    }
-                },
-                touchesBegan: (sender, location) => {
-                },
-                touchesMoved: (sender, location) => {
-                },
-                touchesEnded: (sender, location) => {
-                }
             }
         }
     ]
@@ -207,13 +268,29 @@ function goto(path, name, isDirectory) {
             $('fileList').data = currentList = fs.map(el => {
                 let filePath = pStr.$stringByAppendingPathComponent(el).rawValue();
                 let isDirectory = $file.isDirectory(ROOT + filePath);
+                let attrs = fm.$attributesOfItemAtPath_error(filePath, null);
                 let name = el;
+                let iconImage = null;
+                let info = '';
                 if (isDirectory) {
-                    dirCount++;
                     name += '/'
+                    iconImage = $objc('UIImage').$imageNamed('explorer-folder').rawValue();
+
+                    let ls = $file.list(ROOT + filePath);
+                    if (ls !== undefined) {
+                        info += ls.length;
+                    }
+
+                    dirCount++;
+                } else {
+                    iconImage = $objc('UIImage').$imageNamed('explorer-file').rawValue();
+
+                    if (attrs) {
+                        info = $objc('NSByteCountFormatter').$stringFromByteCount_countStyle(attrs.rawValue().NSFileSize, 0).rawValue().replace('字节', 'B');
+                    }
                 }
 
-                return { name: el, isDirectory, path: filePath, file: { text: name } };
+                return { name: el, isDirectory, path: filePath, file: { text: name }, icon: { image: iconImage }, info: { text: info }, forward: { image: isDirectory ? forwardImage : null } };
             }).sort((x, y) => {
                 if (x.isDirectory ^ y.isDirectory) {
                     return x.isDirectory ? -1 : 1;
