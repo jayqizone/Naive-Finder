@@ -1,7 +1,5 @@
 const [statusBarHeight, indicatorHeight] = $device.isIphoneX && $device.info.screen.width < $device.info.screen.height ? [44, 34] : [20, 0];
 
-$defc('NSHomeDirectory', 'NSString *');
-
 const fm = $objc('NSFileManager').$defaultManager();
 const mb = $objc('NSBundle').$mainBundle();
 
@@ -11,7 +9,7 @@ const BUNDLE_PATH = mb.$bundlePath().rawValue();
 const APP_HOME = NSHomeDirectory().rawValue();
 const APP_GROUP = fm.$containerURLForSecurityApplicationGroupIdentifier('group.jsbox.share').$path().rawValue();
 
-const forwardImage = $objc('UIImage').$imageNamed('browser_forward').rawValue().resized($size(20, 20)).runtimeValue().$imageWithRenderingMode(2).rawValue();
+const FORWARD_ICON = $objc('UIImage').$imageNamed('browser_forward').rawValue().resized($size(20, 20)).runtimeValue().$imageWithRenderingMode(2).rawValue();
 
 let currentList = [];
 
@@ -25,7 +23,8 @@ $ui.render({
             props: {
                 id: 'address',
                 placeholder: 'Input Path',
-                radius: 0
+                radius: 0,
+                bgcolor: $rgb(...Array(3).fill(255 * 0.97))
             },
             layout(make, view) {
                 make.top.inset(0);
@@ -36,6 +35,9 @@ $ui.render({
             events: {
                 didBeginEditing(sender) {
                     showSuggestions(true);
+                },
+                didEndEditing(sender) {
+                    showSuggestions(false);
                 },
                 changed(sender) {
                     if (sender.text === '') {
@@ -122,6 +124,11 @@ $ui.render({
                 didLongPress(sender, indexPath, data) {
                     $device.taptic(2);
                     share(data.path, data.name, data.isDirectory);
+                },
+                didEndDragging(sender) {
+                    if (sender.contentOffset.y < -60) {
+                        $('address').focus();
+                    }
                 }
             }
         },
@@ -129,6 +136,7 @@ $ui.render({
             type: 'list',
             props: {
                 id: 'suggestions',
+                bgcolor: $color('white'),
                 separatorColor: $color('clear'),
                 template: {
                     views: [
@@ -139,7 +147,8 @@ $ui.render({
                             },
                             layout: function (make) {
                                 make.top.inset(5);
-                                make.left.right.inset(0);
+                                make.left.inset(15);
+                                make.right.inset(0);
                             }
                         }, {
                             type: 'label',
@@ -148,32 +157,41 @@ $ui.render({
                                 font: $font(10)
                             },
                             layout: function (make) {
-                                make.left.right.inset(0);
+                                make.left.inset(15);
+                                make.right.inset(0);
                                 make.bottom.inset(5);
                             }
                         }
                     ]
                 },
-                data: [
-                    { title: { text: '/' }, path: '/' },
-                    { title: { text: '/Library/Ringtones' }, path: '/Library/Ringtones' },
-                    { title: { text: '/System/Library' }, path: '/System/Library' },
-                    { title: { text: 'Bundle Path' }, subtitle: { text: BUNDLE_PATH }, path: BUNDLE_PATH },
-                    { title: { text: 'App Home' }, subtitle: { text: APP_HOME }, path: APP_HOME },
-                    { title: { text: 'App Group' }, subtitle: { text: APP_GROUP }, path: APP_GROUP }
+                data: [{
+                    title: 'Suggestions', rows: [
+                        { title: { text: '/' }, path: '/' },
+                        { title: { text: '/Library/Ringtones' }, path: '/Library/Ringtones' },
+                        { title: { text: '/System/Library' }, path: '/System/Library' },
+                        { title: { text: 'Bundle Path' }, subtitle: { text: BUNDLE_PATH }, path: BUNDLE_PATH },
+                        { title: { text: 'App Home' }, subtitle: { text: APP_HOME }, path: APP_HOME },
+                        { title: { text: 'App Group' }, subtitle: { text: APP_GROUP }, path: APP_GROUP }
+                    ]
+                }
                 ]
             },
             layout(make, view) {
                 make.top.equalTo(view.prev);
-                make.left.inset(15);
+                make.left.inset(0);
                 make.right.inset(0);
                 make.bottom.inset(40 + indicatorHeight);
             },
             events: {
                 didSelect(sender, indexPath, data) {
-                    sender.alpha = 0;
+                    showSuggestions(false);
                     $('address').blur();
                     goto(data.path);
+                },
+                didEndDragging(sender) {
+                    if (sender.contentOffset.y < -60) {
+                        $('address').focus();
+                    }
                 }
             }
         },
@@ -220,7 +238,7 @@ $ui.render({
 
                                 let dirs = $('address').text.split('/');
                                 dirs.pop() === '' && dirs.pop();
-                                goto(dirs.join('/') + '/');
+                                goto(dirs.join('/'));
                             }
                         },
                         longPressed({ sender, location }) {
@@ -242,11 +260,15 @@ $ui.render({
                 make.bottom.inset(40);
             }
         }
-    ]
+    ],
+    events: {
+        appeared() {
+        },
+    }
 });
 
 function goto(path, name, isDirectory) {
-    let pStr = NSString.$stringWithString(path || '/');
+    pStr = NSString.$stringWithString(path || '/').$stringByAppendingPathComponent('');
     path = pStr.rawValue();
 
     if (fm.$fileExistsAtPath(path)) {
@@ -260,25 +282,30 @@ function goto(path, name, isDirectory) {
         }
 
         if (isDirectory) {
+            let title = path.split('/').pop();
+            title = title === '' ? 'Naive Finder' : title;
+            $ui.title = title;
             $('address').text = path + (path.endsWith('/') ? '' : '/');
 
             let fs = $file.list(ROOT + path) || [];
 
             let dirCount = 0;
             $('fileList').data = currentList = fs.map(el => {
-                let filePath = pStr.$stringByAppendingPathComponent(el).rawValue();
-                let isDirectory = $file.isDirectory(ROOT + filePath);
-                let attrs = fm.$attributesOfItemAtPath_error(filePath, null);
+                let itemPath = pStr.$stringByAppendingPathComponent(el).rawValue();
+                let isDirectory = $file.isDirectory(ROOT + itemPath);
+                let attrs = fm.$attributesOfItemAtPath_error(itemPath, null);
                 let name = el;
                 let iconImage = null;
                 let info = '';
+                let forwardImage = null;
                 if (isDirectory) {
                     name += '/'
                     iconImage = $objc('UIImage').$imageNamed('explorer-folder').rawValue();
 
-                    let ls = $file.list(ROOT + filePath);
+                    let ls = $file.list(ROOT + itemPath);
                     if (ls !== undefined) {
                         info += ls.length;
+                        forwardImage = FORWARD_ICON;
                     }
 
                     dirCount++;
@@ -290,7 +317,7 @@ function goto(path, name, isDirectory) {
                     }
                 }
 
-                return { name: el, isDirectory, path: filePath, file: { text: name }, icon: { image: iconImage }, info: { text: info }, forward: { image: isDirectory ? forwardImage : null } };
+                return { name: el, isDirectory, path: itemPath, file: { text: name }, icon: { image: iconImage }, info: { text: info }, forward: { image: forwardImage } };
             }).sort((x, y) => {
                 if (x.isDirectory ^ y.isDirectory) {
                     return x.isDirectory ? -1 : 1;
@@ -325,7 +352,7 @@ function goto(path, name, isDirectory) {
                         $quicklook.open({
                             type: suffix,
                             data: fm.$contentsAtPath(path).rawValue()
-                        })
+                        });
                         break;
                 }
                 $('description').text = `W: ${writable}    E: ${executable}    D: ${deletable}`;
@@ -417,14 +444,10 @@ async function share(path, name, isDirectory) {
 }
 
 function showSuggestions(show) {
-    if (show) {
-        $ui.animate({
-            duration: 0.3,
-            animation: function () {
-                $('suggestions').alpha = 1;
-            }
-        });
-    } else {
-        $('suggestions').alpha = 0;
-    }
+    $ui.animate({
+        duration: 0.3,
+        animation: function () {
+            $('suggestions').alpha = show;
+        }
+    });
 }
