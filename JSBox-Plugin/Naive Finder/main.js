@@ -1,3 +1,5 @@
+// require('socketLogger').init();
+
 const [statusBarHeight, indicatorHeight] = $device.isIphoneX && $device.info.screen.width < $device.info.screen.height ? [44, 34] : [20, 0];
 
 const fm = $objc('NSFileManager').$defaultManager();
@@ -12,6 +14,8 @@ const ICLOUD = '/private/var/mobile/Library/Mobile Documents/iCloud~app~cyan~jsb
 
 const FORWARD_ICON = $objc('UIImage').$imageNamed('browser_forward').rawValue().resized($size(20, 20)).runtimeValue().$imageWithRenderingMode(2).rawValue();
 
+let current = -1, further = -1;
+global.history = [];
 let currentList = [];
 
 $ui.render({
@@ -51,7 +55,7 @@ $ui.render({
                 returned(sender) {
                     showSuggestions(false);
                     sender.blur();
-                    goto(sender.text);
+                    goto({ path: sender.text });
                 }
             }
         },
@@ -120,7 +124,7 @@ $ui.render({
             },
             events: {
                 didSelect(sender, indexPath, data) {
-                    goto(data.path, data.name, data.isDirectory);
+                    goto(data);
                 },
                 didLongPress(sender, indexPath, data) {
                     $device.taptic(2);
@@ -191,7 +195,7 @@ $ui.render({
                 didSelect(sender, indexPath, data) {
                     showSuggestions(false);
                     $('address').blur();
-                    goto(data.path);
+                    goto(data);
                 },
                 didScroll({ tracking, contentOffset: { y } }) {
                 },
@@ -231,7 +235,7 @@ $ui.render({
                 {
                     type: 'image',
                     props: {
-                        id: 'upButton',
+                        id: 'backButton',
                         image: $file.read('assets/up.png').image.runtimeValue().$imageWithRenderingMode(2).rawValue(),
                         bgcolor: $color('clear')
                     },
@@ -240,14 +244,8 @@ $ui.render({
                         tapped: function (sender) {
                             sender.animator.makeScale(0.8).makeOpacity(0.4).easeOut.thenAfter(0.05).makeScale(1.25).makeOpacity(1).easeIn.animate(0.05);
 
-                            if ($('address').text === '/') {
+                            if (goto({ direction: -1 }) < 0) {
                                 showSuggestions(true);
-                            } else {
-                                showSuggestions(false);
-
-                                let dirs = $('address').text.split('/');
-                                dirs.pop() === '' && dirs.pop();
-                                goto(dirs.join('/'));
                             }
                         },
                         longPressed({ sender, location }) {
@@ -276,7 +274,18 @@ $ui.render({
     }
 });
 
-function goto(path, name, isDirectory) {
+function goto({ path, name, isDirectory, direction }) {
+    if (direction < 0) {
+        if (current < 1) {
+            return -1;
+        }
+        path = history[--current].path;
+    } else if (direction > 0) {
+        if (current === further) {
+            return Number.MAX_SAFE_INTEGER;
+        }
+        path = history[++current].path;
+    }
     pStr = NSString.$stringWithString(path || '/').$stringByAppendingPathComponent('');
     path = pStr.rawValue();
 
@@ -291,6 +300,13 @@ function goto(path, name, isDirectory) {
         }
 
         if (isDirectory) {
+            if (!direction) {
+                history[further = ++current] = { path };
+            }
+            if (history[current - 1]) {
+                history[current - 1].contentOffset = $('fileList').contentOffset;
+            }
+
             let title = path.split('/').pop();
             title = title === '' ? 'Naive Finder' : title;
             $ui.title = title;
@@ -335,6 +351,8 @@ function goto(path, name, isDirectory) {
                 }
             });
 
+            $('fileList').contentOffset = direction ? history[current].contentOffset : $point(0, 0);
+
             if (readable) {
                 $('description').text = `Directory: ${dirCount}    File:${currentList.length - dirCount}    W: ${writable}    E: ${executable}    D: ${deletable}`;
             } else {
@@ -372,6 +390,8 @@ function goto(path, name, isDirectory) {
     } else {
         $('description').text = 'Item not exist';
     }
+
+    return current;
 }
 
 function getIconBySuffix(suffix) {
