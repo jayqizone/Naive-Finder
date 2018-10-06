@@ -8,6 +8,7 @@ const ROOT = '../../../../../../../../../../';
 const BUNDLE_PATH = mb.$bundlePath().rawValue();
 const APP_HOME = NSHomeDirectory().rawValue();
 const APP_GROUP = fm.$containerURLForSecurityApplicationGroupIdentifier('group.jsbox.share').$path().rawValue();
+const ICLOUD = '/private/var/mobile/Library/Mobile Documents/iCloud~app~cyan~jsbox/';
 
 const FORWARD_ICON = $objc('UIImage').$imageNamed('browser_forward').rawValue().resized($size(20, 20)).runtimeValue().$imageWithRenderingMode(2).rawValue();
 
@@ -22,6 +23,7 @@ $ui.render({
             type: 'input',
             props: {
                 id: 'address',
+                type: $kbType.search,
                 placeholder: 'Input Path',
                 radius: 0,
                 bgcolor: $rgb(...Array(3).fill(255 * 0.97))
@@ -37,7 +39,6 @@ $ui.render({
                     showSuggestions(true);
                 },
                 didEndEditing(sender) {
-                    showSuggestions(false);
                 },
                 changed(sender) {
                     if (sender.text === '') {
@@ -125,8 +126,10 @@ $ui.render({
                     $device.taptic(2);
                     share(data.path, data.name, data.isDirectory);
                 },
-                didEndDragging(sender) {
-                    if (sender.contentOffset.y < -60) {
+                didScroll({ tracking, contentOffset: { y } }) {
+                },
+                didEndDragging({ contentOffset: { y } }) {
+                    if (y < -50) {
                         $('address').focus();
                     }
                 }
@@ -136,6 +139,7 @@ $ui.render({
             type: 'list',
             props: {
                 id: 'suggestions',
+                keyboardDismissMode: true,
                 bgcolor: $color('white'),
                 separatorColor: $color('clear'),
                 template: {
@@ -171,7 +175,8 @@ $ui.render({
                         { title: { text: '/System/Library' }, path: '/System/Library' },
                         { title: { text: 'Bundle Path' }, subtitle: { text: BUNDLE_PATH }, path: BUNDLE_PATH },
                         { title: { text: 'App Home' }, subtitle: { text: APP_HOME }, path: APP_HOME },
-                        { title: { text: 'App Group' }, subtitle: { text: APP_GROUP }, path: APP_GROUP }
+                        { title: { text: 'App Group' }, subtitle: { text: APP_GROUP }, path: APP_GROUP },
+                        { title: { text: 'iCloud' }, subtitle: { text: ICLOUD }, path: ICLOUD }
                     ]
                 }
                 ]
@@ -188,9 +193,13 @@ $ui.render({
                     $('address').blur();
                     goto(data.path);
                 },
-                didEndDragging(sender) {
-                    if (sender.contentOffset.y < -60) {
+                didScroll({ tracking, contentOffset: { y } }) {
+                },
+                didEndDragging({ contentOffset: { y } }) {
+                    if (y < -50) {
                         $('address').focus();
+                    } else if (y > 40) {
+                        showSuggestions(false);
                     }
                 }
             }
