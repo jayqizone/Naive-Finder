@@ -1,7 +1,12 @@
-function sayHello() {
-  $ui.alert($l10n('HELLO_WORLD'));
-}
+const vm = require('./viewManager');
 
 module.exports = {
-  sayHello: sayHello
+  render() {
+    $ui.render({
+      props: {
+        title: 'Naive Finder'
+      },
+      views: [vm.createAddressBar(), vm.createItemList(), vm.createSuggestions(), vm.createDescriptionBar(), vm.createBackButton()]
+    });
+  }
 }
