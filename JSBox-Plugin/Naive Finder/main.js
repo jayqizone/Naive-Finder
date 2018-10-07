@@ -15,7 +15,7 @@ const ICLOUD = '/private/var/mobile/Library/Mobile Documents/iCloud~app~cyan~jsb
 const FORWARD_ICON = $objc('UIImage').$imageNamed('browser_forward').rawValue().resized($size(20, 20)).runtimeValue().$imageWithRenderingMode(2).rawValue();
 
 let current = -1, further = -1;
-global.history = [];
+let history = [];
 let currentList = [];
 
 $ui.render({
@@ -127,8 +127,8 @@ $ui.render({
                     goto(data);
                 },
                 didLongPress(sender, indexPath, data) {
-                    $device.taptic(2);
-                    share(data.path, data.name, data.isDirectory);
+                    $device.taptic(0);
+                    share(data);
                 },
                 didScroll({ tracking, contentOffset: { y } }) {
                 },
@@ -249,7 +249,7 @@ $ui.render({
                             }
                         },
                         longPressed({ sender, location }) {
-                            $device.taptic(2);
+                            $device.taptic(0);
                             showSuggestions(true);
                         },
                         touchesBegan: (sender, location) => {
@@ -319,12 +319,10 @@ function goto({ path, name, isDirectory, direction }) {
                 let itemPath = pStr.$stringByAppendingPathComponent(el).rawValue();
                 let isDirectory = $file.isDirectory(ROOT + itemPath);
                 let attrs = fm.$attributesOfItemAtPath_error(itemPath, null);
-                let name = el;
                 let iconImage = null;
                 let info = '';
                 let forwardImage = null;
                 if (isDirectory) {
-                    name += '/'
                     iconImage = $objc('UIImage').$imageNamed('explorer-folder').rawValue();
 
                     let ls = $file.list(ROOT + itemPath);
@@ -342,7 +340,17 @@ function goto({ path, name, isDirectory, direction }) {
                     }
                 }
 
-                return { name: el, isDirectory, path: itemPath, file: { text: name }, icon: { image: iconImage }, info: { text: info }, forward: { image: forwardImage } };
+                return {
+                    path: itemPath,
+                    name: el,
+                    isDirectory,
+                    parent: path,
+                    access: { writable, executable, deletable },
+                    file: { text: el },
+                    icon: { image: iconImage },
+                    info: { text: info },
+                    forward: { image: forwardImage }
+                };
             }).sort((x, y) => {
                 if (x.isDirectory ^ y.isDirectory) {
                     return x.isDirectory ? -1 : 1;
@@ -452,30 +460,66 @@ function getIconBySuffix(suffix) {
     return image ? image.rawValue() : $objc('UIImage').$imageNamed('explorer-file').rawValue();
 }
 
-async function share(path, name, isDirectory) {
+async function share({ path, name, isDirectory, parent, access: { writable, executable, deletable } }) {
+    let items;
     if (isDirectory) {
-        let index = await $ui.menu(['Archive']);
-        if (index !== undefined) {
-            let dest = `${name}.zip`;
-            let result = await $archiver.zip({
-                directory: ROOT + path,
-                dest
-            });
+        items = ['Archive'];
+    } else {
+        items = ['Share'];
+    }
+    deletable && items.push('Rename');
+    deletable && items.push('Delete');
 
-            if (result) {
+    let { title, index } = await $ui.menu(items);
+    switch (title) {
+        case 'Archive':
+            let dest = `${name}.zip`;
+            if (await $archiver.zip({ directory: ROOT + path, dest })) {
                 await $share.sheet([`${name}.zip`, $file.read(dest)]);
                 $file.delete(dest);
             }
-        }
-    } else {
-        $share.sheet([name, fm.$contentsAtPath(path).rawValue()]);
+            break;
+        case 'Share':
+            $share.sheet([name, fm.$contentsAtPath(path).rawValue()]);
+            break;
+        case 'Rename':
+            renameItem(path, name, parent);
+            break;
+        case 'Delete':
+            deleteItem(path, parent);
+            break;
+        default:
+            break;
+    }
+}
+
+async function renameItem(path, name, parent) {
+    let newName = await $input.text({ text: name, placeholder: 'Input new name' });
+    if (newName !== undefined && newName !== '') {
+        let newPath = NSString.$stringWithString(parent).$stringByAppendingPathComponent(newName).rawValue();
+        fm.$moveItemAtPath_toPath_error(path, newPath, null);
+
+        goto({ path: parent });
+    }
+}
+
+async function deleteItem(path, parent) {
+    let { index } = await $ui.alert({
+        title: 'Are you sure you want to permanently erase this item?',
+        message: 'You can\'t undo this action.',
+        actions: [{ title: 'OK' }, { title: 'CANCEL' }]
+    });
+    if (index === 0) {
+        fm.$removeItemAtPath_error(path, null);
+
+        goto({ path: parent });
     }
 }
 
 function showSuggestions(show) {
     $ui.animate({
         duration: 0.3,
-        animation: function () {
+        animation() {
             $('suggestions').alpha = show;
         }
     });
