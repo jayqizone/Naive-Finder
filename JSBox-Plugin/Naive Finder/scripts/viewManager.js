@@ -50,7 +50,11 @@ function createAddressBar() {
                     __showSuggestions(true);
                 } else {
                     __showSuggestions(false);
-                    $('itemList').data = currentList.filter(el => el.path.includes(sender.text));
+                    $('itemList').data = currentList.filter(el => {
+                        let pStr = NSString.$stringWithString(sender.text).$stringByStandardizingPath();
+                        return el.parent === pStr.$stringByDeletingLastPathComponent().rawValue()
+                            && el.name.toLowerCase().includes(pStr.$lastPathComponent().rawValue().toLowerCase())
+                    });
                 }
             },
             returned(sender) {
@@ -85,7 +89,8 @@ function createItemList() {
                     {
                         type: 'label',
                         props: {
-                            id: 'item'
+                            id: 'item',
+                            lineBreakMode: 5
                         },
                         layout(make, view) {
                             make.top.bottom.inset(0);

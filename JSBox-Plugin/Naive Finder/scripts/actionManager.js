@@ -27,7 +27,7 @@ function makeLocator(listId = '') {
             }
             path = history[++current].path;
         }
-        pStr = NSString.$stringWithString(path || '/').$stringByAppendingPathComponent('');
+        pStr = NSString.$stringWithString(path || '/').$stringByStandardizingPath();
         path = pStr.rawValue();
 
         let exists = fm.$fileExistsAtPath(path);
