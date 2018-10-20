@@ -2,14 +2,19 @@ const fm = $objc('NSFileManager').$defaultManager();
 
 const ROOT = '../../../../../../../../../../';
 
+const PORT = 1405;
+
 module.exports = {
     makeLocator,
-    share
+    share,
+    paste
 }
 
 function makeLocator(listId = '') {
     let current = -1, further = -1;
-    let history = [];
+    const history = [];
+
+    const currentPath = {}, sourcePath = {};
 
     function open({ path, name, isDirectory, direction }) {
         let before = current;
@@ -49,6 +54,7 @@ function makeLocator(listId = '') {
             }
 
             if (isDirectory) {
+                Object.assign(currentPath, { path, access: { readable, writable, executable, deletable } });
                 let refresh = path === (history[current] || {}).path;
                 if (refresh) {
                     if (listId !== '') {
@@ -114,7 +120,7 @@ function makeLocator(listId = '') {
     }
 
     return {
-        open, history,
+        open, history, currentPath, sourcePath,
         get current() { return current },
         get further() { return further }
     }
@@ -142,15 +148,19 @@ function __quicklook(path, name) {
     }
 }
 
-async function share({ path, name, isDirectory, parent, access: { readable, writable, executable, deletable } }) {
+async function share({ path, name, isDirectory, parent, access: { readable, writable, executable, deletable } }, locator) {
     let items;
     if (isDirectory) {
         items = ['Archive'];
     } else {
         items = ['Share'];
     }
+    items.push('Move');
+    items.push('Copy Path');
     deletable && items.push('Rename');
     deletable && items.push('Delete');
+    isDirectory && items.push('Server Here');
+    items.push('Server at Parent');
 
     let { title, index } = await $ui.menu(items);
     let refresh;
@@ -166,6 +176,12 @@ async function share({ path, name, isDirectory, parent, access: { readable, writ
             await $share.sheet([name, fm.$contentsAtPath(path).rawValue()]);
             refresh = true;
             break;
+        case 'Move':
+            Object.assign(locator.sourcePath, { name, path, access: { readable, writable, executable, deletable } });
+            break;
+        case 'Copy Path':
+            $clipboard.text = path;
+            break;
         case 'Rename':
             await __renameItem(path, name, parent);
             refresh = true;
@@ -173,6 +189,18 @@ async function share({ path, name, isDirectory, parent, access: { readable, writ
         case 'Delete':
             await __deleteItem(path, parent);
             refresh = true;
+            break;
+        case 'Server Here':
+            await $http.startServer({
+                port: PORT,
+                path: ROOT + path
+            });
+            break;
+        case 'Server at Parent':
+            await $http.startServer({
+                port: PORT,
+                path: ROOT + parent
+            });
             break;
         default:
             break;
@@ -197,5 +225,21 @@ async function __deleteItem(path, parent) {
     });
     if (index === 0) {
         fm.$removeItemAtPath_error(path, null);
+    }
+}
+
+async function paste({ sourcePath, currentPath }, type) {
+    if (sourcePath.path && currentPath.path && currentPath.access.writable && currentPath.path !== sourcePath.path) {
+        const destPath = NSString.$stringWithString(currentPath.path).$stringByAppendingPathComponent(sourcePath.name);
+        switch (type) {
+            case 'copy':
+                fm.$copyItemAtPath_toPath_error(sourcePath.path, destPath, null);
+                break;
+            case 'move':
+                sourcePath.access.deletable && fm.$moveItemAtPath_toPath_error(sourcePath.path, destPath, null);
+                break;
+            default:
+                break;
+        }
     }
 }

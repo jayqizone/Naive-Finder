@@ -20,7 +20,11 @@ module.exports = {
     createItemList,
     createSuggestions,
     createDescriptionBar,
-    createBackButton
+    createBackButton,
+    locator,
+    refresh() {
+        __goto(locator.currentPath);
+    }
 }
 
 function createAddressBar() {
@@ -41,7 +45,7 @@ function createAddressBar() {
         },
         events: {
             didBeginEditing(sender) {
-                __showSuggestions(true);
+                // __showSuggestions(true);
             },
             didEndEditing(sender) {
             },
@@ -137,8 +141,8 @@ function createItemList() {
             },
             async didLongPress(sender, indexPath, data) {
                 $device.taptic(0);
-                let { refresh } = await share(data);
-                refresh && __goto({ path: data.parent });
+                let { refresh } = await share(data, locator);
+                refresh && __goto(locator.currentPath);
             },
             didScroll({ tracking, contentOffset: { y } }) {
             },
@@ -215,8 +219,6 @@ function createSuggestions() {
             didEndDragging({ contentOffset: { y } }) {
                 if (y < -50) {
                     $('address').focus();
-                } else if (y > 40) {
-                    __showSuggestions(false);
                 }
             }
         }
