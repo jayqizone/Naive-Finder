@@ -1,7 +1,8 @@
 const vm = require('./viewManager');
-const { paste } = require('./actionManager');
+const { addTo, paste } = require('./actionManager');
 
-const fm = $objc('NSFileManager').$defaultManager();
+let initiated = false;
+let leftButton, rightButton;
 
 module.exports = {
   render() {
@@ -10,18 +11,27 @@ module.exports = {
         title: 'Naive Finder',
         navButtons: [
           {
-            id: 'rightButton',
-            title: 'Move',
+            // title: 'Move',
+            image: $objc('UIImage').$imageNamed('bar-item-add').rawValue(),
             async handler() {
-              await paste(vm.locator, 'move');
-              vm.refresh();
+              if (rightButton.views[0].alpha === 1) {
+                vm.showSuggestions(false);
+
+                await addTo(vm.locator, vm.refresh);
+              } else if (rightButton.views[1].alpha === 1) {
+                await paste(vm.locator, 'move');
+              }
             }
           }, {
-            id: 'leftButton',
-            title: 'Copy',
+            // title: 'Copy',
+            image: $objc('UIImage').$imageNamed('bar-item-search').rawValue(),
             async handler() {
-              await paste(vm.locator, 'copy');
-              vm.refresh();
+              const leftButton = $ui.window.super.super.super.super.views[1].views[2].views[1].views[0];
+              if (leftButton.views[0].alpha === 1) {
+                vm.showSuggestions(false);
+              } else if (leftButton.views[1].alpha === 1) {
+                await paste(vm.locator, 'copy');
+              }
             }
           }
         ]
@@ -32,7 +42,33 @@ module.exports = {
         vm.createSuggestions(),
         vm.createDescriptionBar(),
         vm.createBackButton()
-      ]
+      ],
+      events: {
+        appeared() {
+          if (!initiated) {
+            initiated = true;
+            $delay(0, function () {
+              leftButton = $ui.window.super.super.super.super.views[1].views[2].views[1].views[0];
+              rightButton = $ui.window.super.super.super.super.views[1].views[2].views[1].views[2];
+              leftButton.add({
+                type: 'label',
+                props: {
+                  text: 'Copy',
+                  textColor: $color('white'),
+                  alpha: 0
+                },
+                layout: $layout.fill
+              });
+              leftButton.views[0].alpha = 0.5;
+              rightButton.views[0].alpha = 0.5;
+            });
+          }
+        },
+        disappeared() {
+        },
+        dealloc() {
+        }
+      }
     });
   }
 };

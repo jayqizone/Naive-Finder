@@ -1,13 +1,12 @@
 const fm = $objc('NSFileManager').$defaultManager();
-
 const ROOT = '../../../../../../../../../../';
-
 const PORT = 1405;
 
 module.exports = {
     makeLocator,
     share,
-    paste
+    paste,
+    addTo
 }
 
 function makeLocator(listId = '') {
@@ -21,6 +20,8 @@ function makeLocator(listId = '') {
         if (direction < 0) {
             if (current === 0) {
                 current--;
+                delete currentPath.path;
+                delete currentPath.access;
                 return { clear: true };
             } else if (current < 0) {
                 return;
@@ -148,7 +149,7 @@ function __quicklook(path, name) {
     }
 }
 
-async function share({ path, name, isDirectory, parent, access: { readable, writable, executable, deletable } }, locator) {
+async function share({ path, name, isDirectory, parent, access: { readable, writable, executable, deletable } }, locator, callback) {
     let items;
     if (isDirectory) {
         items = ['Archive'];
@@ -159,8 +160,6 @@ async function share({ path, name, isDirectory, parent, access: { readable, writ
     items.push('Copy Path');
     deletable && items.push('Rename');
     deletable && items.push('Delete');
-    isDirectory && items.push('Server Here');
-    items.push('Server at Parent');
 
     let { title, index } = await $ui.menu(items);
     let refresh;
@@ -190,23 +189,11 @@ async function share({ path, name, isDirectory, parent, access: { readable, writ
             await __deleteItem(path, parent);
             refresh = true;
             break;
-        case 'Server Here':
-            await $http.startServer({
-                port: PORT,
-                path: ROOT + path
-            });
-            break;
-        case 'Server at Parent':
-            await $http.startServer({
-                port: PORT,
-                path: ROOT + parent
-            });
-            break;
         default:
             break;
     }
 
-    return { refresh }
+    refresh && callback();
 }
 
 async function __renameItem(path, name, parent) {
@@ -229,17 +216,88 @@ async function __deleteItem(path, parent) {
 }
 
 async function paste({ sourcePath, currentPath }, type) {
-    if (sourcePath.path && currentPath.path && currentPath.access.writable && currentPath.path !== sourcePath.path) {
-        const destPath = NSString.$stringWithString(currentPath.path).$stringByAppendingPathComponent(sourcePath.name);
-        switch (type) {
-            case 'copy':
-                fm.$copyItemAtPath_toPath_error(sourcePath.path, destPath, null);
-                break;
-            case 'move':
-                sourcePath.access.deletable && fm.$moveItemAtPath_toPath_error(sourcePath.path, destPath, null);
-                break;
-            default:
-                break;
+    if (sourcePath.path && currentPath.path && currentPath.access.writable) {
+        const destPath = NSString.$stringWithString(currentPath.path).$stringByAppendingPathComponent(sourcePath.name).rawValue();
+        if (sourcePath.path !== destPath) {
+            switch (type) {
+                case 'copy':
+                    fm.$copyItemAtPath_toPath_error(sourcePath.path, destPath, null);
+                    break;
+                case 'move':
+                    sourcePath.access.deletable && fm.$moveItemAtPath_toPath_error(sourcePath.path, destPath, null);
+                    break;
+                default:
+                    break;
+            }
+            delete sourcePath.path;
+            delete sourcePath.name;
+            delete sourcePath.access;
         }
     }
+}
+
+async function addTo(locator, callback) {
+    const items = [];
+    if (locator.currentPath.access.writable) {
+        items.push('Create Folder', 'Create Script', 'Import Photo', 'iCloud Drive');
+    }
+    items.push('Web Server');
+    const { title, index } = await $ui.menu(items);
+    let refresh;
+    switch (title) {
+        case 'Create Folder':
+            const folderName = await $input.text({ placeholder: 'Folder Name' });
+            if (folderName !== undefined && folderName !== '') {
+                const path = NSString.$stringWithString(locator.currentPath.path).$stringByAppendingPathComponent(folderName);
+                fm.$createDirectoryAtPath_withIntermediateDirectories_attributes_error(path, true, null, null);
+                refresh = true;
+            }
+            break;
+        case 'Create Script':
+            const fileName = await $input.text({ placeholder: 'File Name' });
+            if (fileName !== undefined && fileName !== '') {
+                const path = NSString.$stringWithString(locator.currentPath.path).$stringByAppendingPathComponent(fileName);
+                fm.$createFileAtPath_contents_attributes(path, null, null);
+                refresh = true;
+            }
+            break;
+        case 'Import Photo':
+            const resp = await $photo.pick({
+                mediaTypes: [$mediaType.image, $mediaType.movie],
+                format: 'data'
+            });
+            if (resp) {
+                const resultBlock = $block('void, ALAsset *', function (asset) {
+                    let representation = asset.$defaultRepresentation();
+                    const path = NSString.$stringWithString(locator.currentPath.path).$stringByAppendingPathComponent(representation.$filename());
+                    fm.$createFileAtPath_contents_attributes(path, resp.data, null);
+                    callback();
+                });
+
+                const assetslLibrary = $objc('ALAssetsLibrary').$new();
+                assetslLibrary.$assetForURL_resultBlock_failureBlock(resp.metadata.UIImagePickerControllerReferenceURL, resultBlock, null);
+            }
+            break;
+        case 'iCloud Drive': {
+            const data = await $drive.open();
+            const fileName = await $input.text({ placeholder: 'File Name' });
+            if (fileName !== undefined && fileName !== '') {
+                const path = NSString.$stringWithString(locator.currentPath.path).$stringByAppendingPathComponent(fileName);
+                fm.$createFileAtPath_contents_attributes(path, data, null);
+                refresh = true;
+            }
+            break;
+        }
+        case 'Web Server':
+            const server = await $http.startServer({
+                port: PORT,
+                path: ROOT + locator.currentPath.path
+            });
+            $ui.toast(server.url);
+            break;
+        default:
+            break;
+    }
+
+    refresh && callback();
 }

@@ -1,5 +1,5 @@
 const { makeLocator, share } = require('./actionManager');
-const locator = makeLocator('itemList');
+const locator = __proxy(makeLocator('itemList'));
 
 const [statusBarHeight, indicatorHeight] = $device.isIphoneX && $device.info.screen.width < $device.info.screen.height ? [44, 34] : [20, 0];
 
@@ -13,6 +13,9 @@ const ICLOUD = '/private/var/mobile/Library/Mobile Documents/iCloud~app~cyan~jsb
 
 const FORWARD_ICON = $objc('UIImage').$imageNamed('browser_forward').rawValue().resized($size(20, 20)).runtimeValue().$imageWithRenderingMode(2).rawValue();
 
+let initiated = false;
+let leftButton, rightButton;
+
 let currentList = [];
 
 module.exports = {
@@ -22,6 +25,7 @@ module.exports = {
     createDescriptionBar,
     createBackButton,
     locator,
+    showSuggestions: __showSuggestions,
     refresh() {
         __goto(locator.currentPath);
     }
@@ -34,6 +38,7 @@ function createAddressBar() {
             id: 'address',
             type: $kbType.search,
             placeholder: 'Input Path',
+            enablesReturnKeyAutomatically: true,
             radius: 0,
             bgcolor: $rgb(...Array(3).fill(255 * 0.97))
         },
@@ -45,7 +50,9 @@ function createAddressBar() {
         },
         events: {
             didBeginEditing(sender) {
-                // __showSuggestions(true);
+                if ($('suggestions').alpha) {
+                    __showSuggestions(false);
+                }
             },
             didEndEditing(sender) {
             },
@@ -141,8 +148,7 @@ function createItemList() {
             },
             async didLongPress(sender, indexPath, data) {
                 $device.taptic(0);
-                let { refresh } = await share(data, locator);
-                refresh && __goto(locator.currentPath);
+                await share(data, locator, () => __goto(locator.currentPath));
             },
             didScroll({ tracking, contentOffset: { y } }) {
             },
@@ -292,6 +298,12 @@ function createBackButton() {
 }
 
 function __goto(data) {
+    if (!initiated) {
+        initiated = true;
+        leftButton = $ui.window.super.super.super.super.views[1].views[2].views[1].views[0];
+        rightButton = $ui.window.super.super.super.super.views[1].views[2].views[1].views[2];
+    }
+
     if (data.direction < 0 && locator.current < 0) {
         return;
     }
@@ -306,9 +318,13 @@ function __goto(data) {
 
     if (result.clear) {
         $ui.title = 'Naive Finder';
-        $('address').text = ''
+        $('address').text = '';
         $('itemList').data = currentList = [];
-        $('description').text = ''
+        $('description').text = '';
+        if (!locator.sourcePath.path) {
+            leftButton.views[0].alpha = 0.5;
+            rightButton.views[0].alpha = 0.5;
+        }
         return;
     }
 
@@ -350,6 +366,23 @@ function __goto(data) {
             } else {
                 $('description').text = `Direcotory is not readable`;
             }
+
+            if (locator.sourcePath.path) {
+                const destPath = NSString.$stringWithString(locator.currentPath.path).$stringByAppendingPathComponent(locator.sourcePath.name).rawValue();
+                if (locator.currentPath.access.writable && locator.sourcePath.path !== destPath) {
+                    leftButton.views[1].alpha = 1;
+                    rightButton.views[1].alpha = locator.sourcePath.access.deletable ? 1 : 0.5;
+                } else {
+                    leftButton.views[1].alpha = 0.5;
+                    rightButton.views[1].alpha = 0.5;
+                }
+            } else if (locator.currentPath.path && locator.currentPath.access.readable) {
+                leftButton.views[0].alpha = 1;
+                rightButton.views[0].alpha = 1;
+            } else {
+                leftButton.views[0].alpha = 0.5;
+                rightButton.views[0].alpha = 0.5;
+            }
         } else {
             if (readable) {
                 $('description').text = `W: ${writable}    E: ${executable}    D: ${deletable}`;
@@ -362,9 +395,9 @@ function __goto(data) {
     }
 }
 
-function __getIconBySuffix(suffix) {
+function __getIconBySuffix(suffix = '') {
     let image;
-    switch (suffix) {
+    switch (suffix.toLowerCase()) {
         case 'bmp':
         case 'png':
         case 'jpg':
@@ -427,4 +460,57 @@ function __showSuggestions(show) {
             $('suggestions').alpha = show;
         }
     });
+}
+
+function __proxy(locator) {
+    const { open, history, currentPath, sourcePath } = locator;
+    return {
+        open, history, currentPath,
+        get current() { return locator.current },
+        get further() { return locator.further },
+        sourcePath: new Proxy(sourcePath, {
+            set(target, key, value, receiver) {
+                target[key] = value;
+                if (key === 'path') {
+                    if (value) {
+                        leftButton.views[0].alpha = 0;
+                        rightButton.views[0].alpha = 0;
+
+                        leftButton.views[1].alpha = 0.5;
+                        if (rightButton.views[1]) {
+                            rightButton.views[1].alpha = 0.5;
+                        } else {
+                            rightButton.add({
+                                type: 'label',
+                                props: {
+                                    text: 'Move',
+                                    textColor: $color('white'),
+                                    alpha: 0.5
+                                },
+                                layout: $layout.fill
+                            });
+                        }
+                    }
+                }
+            },
+            deleteProperty(target, key) {
+                delete target[key];
+                if (key === 'path') {
+                    __showSuggestions(false);
+                    __goto(currentPath);
+
+                    leftButton.views[1].alpha = 0;
+                    rightButton.views[1].remove();
+
+                    if (currentPath.access.readable) {
+                        leftButton.views[0].alpha = 1;
+                        rightButton.views[0].alpha = 1;
+                    } else {
+                        leftButton.views[0].alpha = 0.5;
+                        rightButton.views[0].alpha = 0.5;
+                    }
+                }
+            }
+        })
+    };
 }
